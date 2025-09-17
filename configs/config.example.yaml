@@ -1,0 +1,174 @@
+# Configuration for Hong Kong Policy Address Web Crawler
+# Copy this file to config.yaml and customize as needed
+
+# ============================================================================
+# CRAWL TARGETS
+# ============================================================================
+
+# Starting URLs - the crawler begins here
+seeds:
+  - "https://www.policyaddress.gov.hk/2023/en/policy.html"
+  - "https://www.policyaddress.gov.hk/2024/en/policy.html"  
+  - "https://www.policyaddress.gov.hk/2025/en/policy.html"
+
+# Only crawl pages from these domains (security measure)
+allowed_hosts:
+  - "www.policyaddress.gov.hk"
+
+# Years to target (used for URL generation and filtering)
+years: [2023, 2024, 2025]
+
+# Languages to process ("en" = English, "tc" = Traditional Chinese)
+languages: ["en"]  # Start with English only
+
+# ============================================================================
+# RATE LIMITING & POLITENESS
+# ============================================================================
+
+rate_limits:
+  # Requests per second per host (1 = polite, 3-5 = moderate, 10+ = aggressive)
+  per_host_rps: 1
+  
+  # Max concurrent connections per host (2-5 typical for small sites)
+  per_host_concurrency: 2
+  
+  # Max total concurrent connections across all hosts
+  global_concurrency: 4
+
+# ============================================================================
+# CRAWL BOUNDARIES
+# ============================================================================
+
+# Max link depth from seed URLs (5 = reasonable for most sites)
+depth_limit: 5
+
+# Max total pages to crawl (safety limit to prevent runaway crawling)
+max_pages: 200
+
+# Respect robots.txt files (true = polite, false = ignore restrictions)
+respect_robots_txt: true
+
+# ============================================================================
+# NETWORK SETTINGS
+# ============================================================================
+
+timeouts:
+  connect: 10  # Seconds to wait for connection
+  read: 30     # Seconds to wait for response data
+  write: 5     # Seconds to wait for write operations
+  pool: 5      # Seconds to wait for connection from pool
+
+# Number of retry attempts for failed requests
+retries: 3
+
+# User-Agent string (identifies your crawler to websites)
+user_agent: "PolicyCrawler/1.0 (+https://github.com/yourorg/policy-crawler)"
+
+# ============================================================================
+# STORAGE & OUTPUT
+# ============================================================================
+
+storage:
+  # Save raw HTML files to data/raw/ (useful for debugging)
+  save_html: true
+  
+  # Save PDF files to data/raw/ (many policy docs are PDFs)
+  save_pdf: true
+  
+  # Output file for processed documents (JSONL format)
+  output_jsonl: "data/processed/documents.jsonl"
+
+# When both HTML and PDF have same content, prefer PDF (usually better formatted)
+# Options: true = prefer PDF, false = prefer HTML
+prefer_pdf_over_html: true
+
+# ============================================================================
+# DEDUPLICATION & RESUME
+# ============================================================================
+
+# How to handle duplicate content (same content, different URLs)
+deduplication:
+  # When to check for duplicates: "crawl" = during crawling, "index" = during processing
+  strategy: "index"  # Industry standard: crawl everything, dedupe during processing
+  
+  # Skip downloading if file already exists in data/raw/
+  skip_existing_files: true
+  
+  # Resume crawling from where we left off (saves progress in .crawl_state.json)
+  enable_resume: true
+
+# ============================================================================
+# RAG (Retrieval Augmented Generation) SETTINGS
+# ============================================================================
+
+rag:
+  # Chunk size in tokens (1000 = good balance of context vs specificity)
+  # Smaller chunks (512-768) = more precise, larger (1500-2000) = more context
+  chunk_size_tokens: 1000
+  
+  # Token overlap between chunks (150 = ~10-15% overlap, prevents context loss)
+  chunk_overlap_tokens: 150
+  
+  # OpenAI embedding model (text-embedding-3-large = highest quality, most expensive)
+  # Alternatives: "text-embedding-3-small" (cheaper), "text-embedding-ada-002" (legacy)
+  embedding_model: "text-embedding-3-large"
+  
+  # Respect document boundaries when chunking (don't split across pages/sections)
+  respect_boundaries: true
+  
+  # Include metadata in chunks (page numbers, section headings, etc.)
+  include_metadata: true
+
+# ============================================================================
+# OPENAI INTEGRATION
+# ============================================================================
+
+openai:
+  # Enable OpenAI embeddings (requires API key in .env file)
+  enabled: false
+  
+  # API key (leave empty, set in .env file as OPENAI_API_KEY)
+  api_key: ""
+  
+  # Batch size for embedding API calls (100 = good balance of speed vs API limits)
+  batch_size: 100
+  
+  # Max retries for API failures
+  max_retries: 3
+
+# ============================================================================
+# PINECONE VECTOR DATABASE
+# ============================================================================
+
+pinecone:
+  # Enable Pinecone vector storage (requires API key in .env file)
+  enabled: false
+  
+  # API key (leave empty, set in .env file as PINECONE_API_KEY)
+  api_key: ""
+  
+  # Pinecone index name (create this in Pinecone dashboard first)
+  index_name: "policy-address-index"
+  
+  # Vector dimensions (must match embedding model: 3072 for text-embedding-3-large)
+  dimension: 3072
+  
+  # Distance metric ("cosine" = most common, "euclidean" = alternative)
+  metric: "cosine"
+  
+  # Upsert batch size (100-500 typical, higher = faster but more memory)
+  batch_size: 100
+
+# ============================================================================
+# LOGGING & MONITORING
+# ============================================================================
+
+logging:
+  # Log level: DEBUG = verbose, INFO = normal, WARNING = errors only
+  level: "INFO"
+  
+  # Save logs to file
+  file: "logs/crawler.log"
+  
+  # Show progress bars (requires rich/tqdm)
+  show_progress: true

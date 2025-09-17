@@ -1,0 +1,13 @@
+httpx[socks]==0.27.2
+beautifulsoup4==4.12.3
+lxml>=6.0.0
+pypdf==5.0.1
+pdfminer.six==20231228
+python-dotenv==1.0.1
+PyYAML==6.0.2
+tqdm==4.66.5
+pydantic==2.8.2
+openai==1.47.0
+pinecone-client==5.0.1
+rich==13.9.2
+yarl==1.9.4
