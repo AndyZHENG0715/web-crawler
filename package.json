@@ -1,0 +1,32 @@
+{
+  "name": "n8n-policy-address-crawler",
+  "version": "1.0.0",
+  "description": "N8N workflow deployment and management for Hong Kong Policy Address web crawler",
+  "main": "deploy-n8n-crawler.js",
+  "scripts": {
+    "deploy": "node deploy-n8n-crawler.js",
+    "deploy-and-run": "node deploy-n8n-crawler.js --execute",
+    "test-connection": "node -e \"const deployer = require('./deploy-n8n-crawler.js'); new deployer().testConnection()\"",
+    "setup": "npm install && echo 'Please update .env with your n8n credentials'"
+  },
+  "dependencies": {
+    "dotenv": "^16.3.1",
+    "cheerio": "^1.0.0-rc.12"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  },
+  "keywords": [
+    "n8n",
+    "web-crawler",
+    "hong-kong",
+    "policy-address",
+    "government",
+    "automation"
+  ],
+  "author": "Policy Address Crawler Team",
+  "license": "MIT",
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}

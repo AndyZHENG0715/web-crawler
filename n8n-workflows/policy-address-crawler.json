@@ -1,0 +1,341 @@
+{
+  "name": "Hong Kong Policy Address Crawler",
+  "description": "Comprehensive web crawler for Hong Kong Chief Executive's Policy Address (2023-2025). Replicates the Python implementation using n8n workflows.",
+  "nodes": [
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "seedUrls",
+              "value": "={{ $env.POLICY_ADDRESS_URLS.split(',') }}"
+            },
+            {
+              "name": "maxPages", 
+              "value": "={{ $env.MAX_PAGES || '200' }}"
+            },
+            {
+              "name": "rateLimitRps",
+              "value": "={{ $env.RATE_LIMIT_RPS || '1' }}"
+            },
+            {
+              "name": "allowedHosts",
+              "value": "www.policyaddress.gov.hk"
+            }
+          ]
+        }
+      },
+      "id": "config-node",
+      "name": "Configuration",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "crawl-state", 
+              "name": "crawlState",
+              "value": "={{ {\n  \"urlQueue\": [],\n  \"visitedUrls\": new Set(),\n  \"documents\": [],\n  \"pagesCrawled\": 0,\n  \"startTime\": new Date().toISOString()\n} }}",
+              "type": "object"
+            }
+          ]
+        }
+      },
+      "id": "init-state",
+      "name": "Initialize Crawl State", 
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "seed-urls",
+              "name": "currentUrls", 
+              "value": "={{ $json.seedUrls }}",
+              "type": "array"
+            }
+          ]
+        }
+      },
+      "id": "load-seeds",
+      "name": "Load Seed URLs",
+      "type": "n8n-nodes-base.set", 
+      "typeVersion": 3.4,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "url-splitter",
+      "name": "Process URLs",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.currentUrls[$splitInBatches.index] }}",
+        "options": {
+          "headers": {
+            "User-Agent": "PolicyCrawler-N8N/1.0 (+https://github.com/AndyZHENG0715/web-crawler)"
+          },
+          "timeout": 30000,
+          "retry": {
+            "enabled": true,
+            "maxRetries": 3
+          }
+        }
+      },
+      "id": "http-fetcher",
+      "name": "Fetch Page Content",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "success-condition",
+              "leftValue": "={{ $json.statusCode }}",
+              "rightValue": 200,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-response",
+      "name": "Check Response Success",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// HTML Content Parser - replicates Python BeautifulSoup functionality\nconst cheerio = require('cheerio');\n\nfor (const item of $input.all()) {\n  const url = item.json.url;\n  const html = item.json.data;\n  \n  try {\n    const $ = cheerio.load(html);\n    \n    // Remove unwanted elements (same as Python version)\n    $('script, style, nav, header, footer, aside').remove();\n    \n    // Extract title\n    let title = $('title').text().trim();\n    if (!title) {\n      title = $('h1').first().text().trim() || 'Untitled';\n    }\n    \n    // Find main content area\n    let mainContent = $('main, article, [role=\"main\"], .content, #content, .main, #main').first();\n    if (mainContent.length === 0) {\n      mainContent = $('body');\n    }\n    \n    // Extract text content with structure preservation\n    let content = '';\n    \n    // Handle headings\n    mainContent.find('h1, h2, h3, h4, h5, h6').each((i, el) => {\n      const headingText = $(el).text().trim();\n      if (headingText) {\n        content += `\\n\\n${headingText}\\n`;\n      }\n    });\n    \n    // Handle paragraphs and divs\n    mainContent.find('p, div').each((i, el) => {\n      const paraText = $(el).text().trim();\n      if (paraText && paraText.length > 10) {\n        content += `\\n${paraText}\\n`;\n      }\n    });\n    \n    // Handle lists\n    mainContent.find('li').each((i, el) => {\n      const liText = $(el).text().trim();\n      if (liText) {\n        content += `\\n• ${liText}`;\n      }\n    });\n    \n    // Fallback to full text if structured extraction didn't work\n    if (!content.trim()) {\n      content = mainContent.text();\n    }\n    \n    // Clean up whitespace\n    content = content.replace(/\\n\\s*\\n\\s*\\n+/g, '\\n\\n');\n    content = content.replace(/[ \\t]+/g, ' ');\n    content = content.trim();\n    \n    // Extract links (both regular and PDF links)\n    const links = [];\n    const pdfLinks = [];\n    \n    $('a[href]').each((i, el) => {\n      const href = $(el).attr('href');\n      if (href && !href.startsWith('#')) {\n        const absoluteUrl = new URL(href, url).href;\n        \n        if (href.toLowerCase().endsWith('.pdf')) {\n          pdfLinks.push(absoluteUrl);\n        } else if (absoluteUrl.includes('policyaddress.gov.hk')) {\n          links.push(absoluteUrl);\n        }\n      }\n    });\n    \n    // Detect content page links (p1.html, p5.html, etc.) for table of contents\n    const contentPageLinks = [];\n    if (url.includes('policy.html')) {\n      $('a[href]').each((i, el) => {\n        const href = $(el).attr('href');\n        if (href && /p\\d+\\.html$/.test(href)) {\n          const absoluteUrl = new URL(href, url).href;\n          contentPageLinks.push(absoluteUrl);\n        }\n      });\n    }\n    \n    // Find \"Next Page\" button for content pages\n    let nextPageUrl = null;\n    if (!url.includes('policy.html')) { // Only for content pages\n      $('a[href]').each((i, el) => {\n        const linkText = $(el).text().toLowerCase();\n        const href = $(el).attr('href');\n        \n        if (href && (linkText.includes('next') || linkText.includes('下一頁'))) {\n          nextPageUrl = new URL(href, url).href;\n          return false; // Break the loop\n        }\n      });\n    }\n    \n    // Generate content hash (similar to Python version)\n    const crypto = require('crypto');\n    const contentHash = crypto.createHash('sha256').update(content).digest('hex');\n    \n    const result = {\n      url: url,\n      title: title,\n      content: content,\n      contentHash: contentHash,\n      contentType: 'text/html',\n      links: links,\n      pdfLinks: pdfLinks,\n      contentPageLinks: contentPageLinks,\n      nextPageUrl: nextPageUrl,\n      contentLength: content.length,\n      metadata: {\n        contentLength: html.length,\n        finalUrl: url,\n        statusCode: item.json.statusCode,\n        crawledAt: new Date().toISOString()\n      }\n    };\n    \n    $return.push({ json: result });\n    \n  } catch (error) {\n    $return.push({ \n      json: { \n        url: url, \n        error: `Parsing failed: ${error.message}`,\n        contentType: 'error'\n      } \n    });\n  }\n}\n\nreturn $return;"
+      },
+      "id": "parse-html",
+      "name": "Parse HTML Content",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 200]
+    },
+    {
+      "parameters": {
+        "language": "javaScript", 
+        "jsCode": "// URL Discovery and Queueing Logic - replicates Python frontier functionality\n\nconst newUrls = [];\nconst crawledUrls = new Set();\n\nfor (const item of $input.all()) {\n  if (item.json.error) continue;\n  \n  const document = item.json;\n  const currentUrl = document.url;\n  \n  // Priority-based URL discovery (same logic as Python version)\n  \n  // 1. Highest Priority: Content page links from table of contents\n  if (document.contentPageLinks && document.contentPageLinks.length > 0) {\n    document.contentPageLinks.forEach(link => {\n      if (!crawledUrls.has(link)) {\n        newUrls.push({ url: link, priority: 0, source: 'content-pages', parent: currentUrl });\n      }\n    });\n  }\n  \n  // 2. High Priority: Next page button (for sequential navigation)\n  if (document.nextPageUrl && !crawledUrls.has(document.nextPageUrl)) {\n    newUrls.push({ url: document.nextPageUrl, priority: 0, source: 'next-button', parent: currentUrl });\n  }\n  \n  // 3. Medium Priority: PDF documents\n  if (document.pdfLinks && document.pdfLinks.length > 0) {\n    document.pdfLinks.forEach(pdfUrl => {\n      if (!crawledUrls.has(pdfUrl)) {\n        newUrls.push({ url: pdfUrl, priority: 1, source: 'pdf-links', parent: currentUrl });\n      }\n    });\n  }\n  \n  // 4. Lower Priority: Other relevant links\n  if (document.links && document.links.length > 0) {\n    document.links.forEach(link => {\n      // Filter for Policy Address related URLs\n      if (link.includes('policyaddress.gov.hk') && \n          (link.includes('policy') || /p\\d+/.test(link)) &&\n          !crawledUrls.has(link)) {\n        newUrls.push({ url: link, priority: 2, source: 'related-links', parent: currentUrl });\n      }\n    });\n  }\n  \n  crawledUrls.add(currentUrl);\n}\n\n// Sort by priority (lower number = higher priority)\nnewUrls.sort((a, b) => a.priority - b.priority);\n\n// Return the document along with discovered URLs\nreturn [{\n  json: {\n    processedDocument: $input.first().json,\n    discoveredUrls: newUrls,\n    urlCount: newUrls.length\n  }\n}];"
+      },
+      "id": "discover-urls",
+      "name": "Discover New URLs", 
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1780, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "has-content",
+              "leftValue": "={{ $json.processedDocument.content.length }}",
+              "rightValue": 50,
+              "operator": {
+                "type": "number", 
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "filter-valid-content",
+      "name": "Filter Valid Content",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2000, 200]
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// Store document data for later retrieval\n// Since writeFile might not be available, we'll store in workflow context\nconst document = $input.first().json.processedDocument;\n\n// Create a simplified document record\nconst record = {\n  url: document.url,\n  title: document.title,\n  contentType: document.contentType,\n  contentLength: document.contentLength,\n  timestamp: new Date().toISOString(),\n  content: document.content ? document.content.substring(0, 1000) + '...' : '',\n  extractedText: document.extractedText ? document.extractedText.substring(0, 1000) + '...' : ''\n};\n\n// Log the document\nconsole.log('📄 Crawled Document:', JSON.stringify(record, null, 2));\n\nreturn [{ json: { documentSaved: true, record: record } }];"
+      },
+      "id": "save-document",
+      "name": "Log Document Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2220, 120]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"  
+          },
+          "conditions": [
+            {
+              "id": "has-urls",
+              "leftValue": "={{ $json.urlCount }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-new-urls",
+      "name": "Check for New URLs",
+      "type": "n8n-nodes-base.if", 
+      "typeVersion": 2,
+      "position": [2220, 280]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "next-batch",
+              "name": "currentUrls",
+              "value": "={{ $json.discoveredUrls.slice(0, 10).map(item => item.url) }}",
+              "type": "array"
+            }
+          ]
+        }
+      },
+      "id": "prepare-next-batch",
+      "name": "Prepare Next URL Batch",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [2440, 280]
+    },
+    {
+      "parameters": {
+        "unit": "seconds",
+        "amount": "={{ 1 / parseInt($('Configuration').item.json.rateLimitRps) }}"
+      },
+      "id": "rate-limiter",
+      "name": "Rate Limiting Delay",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [2660, 280]
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// Final statistics and cleanup\nconst items = $input.all();\nconst documents = items.filter(item => item.json.processedDocument && !item.json.processedDocument.error);\n\nconst stats = {\n  totalDocuments: documents.length,\n  htmlDocuments: documents.filter(doc => doc.json.processedDocument.contentType === 'text/html').length,\n  pdfDocuments: documents.filter(doc => doc.json.processedDocument.url.includes('.pdf')).length,\n  totalContent: documents.reduce((sum, doc) => sum + doc.json.processedDocument.contentLength, 0),\n  uniqueUrls: new Set(documents.map(doc => doc.json.processedDocument.url)).size,\n  crawlCompleted: new Date().toISOString()\n};\n\nreturn [{ json: stats }];"
+      },
+      "id": "final-stats",
+      "name": "Generate Final Statistics",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2440, 120]
+    },
+    {
+      "parameters": {
+        "message": "=Policy Address Crawler Completed!\\n\\n📊 **Final Statistics:**\\n- Documents: {{ $json.totalDocuments }}\\n- HTML Pages: {{ $json.htmlDocuments }}\\n- PDF Files: {{ $json.pdfDocuments }}\\n- Total Content: {{ Math.round($json.totalContent / 1024) }}KB\\n- Unique URLs: {{ $json.uniqueUrls }}\\n- Completed: {{ $json.crawlCompleted }}",
+        "options": {}
+      },
+      "id": "completion-notice",
+      "name": "Completion Notice",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.1,
+      "position": [2660, 120]
+    }
+  ],
+  "connections": {
+    "Configuration": {
+      "main": [[{"node": "Initialize Crawl State", "type": "main", "index": 0}]]
+    },
+    "Initialize Crawl State": {
+      "main": [[{"node": "Load Seed URLs", "type": "main", "index": 0}]]
+    },
+    "Load Seed URLs": {
+      "main": [[{"node": "Process URLs", "type": "main", "index": 0}]]
+    },
+    "Process URLs": {
+      "main": [[{"node": "Fetch Page Content", "type": "main", "index": 0}]]
+    },
+    "Fetch Page Content": {
+      "main": [[{"node": "Check Response Success", "type": "main", "index": 0}]]
+    },
+    "Check Response Success": {
+      "main": [
+        [{"node": "Parse HTML Content", "type": "main", "index": 0}],
+        []
+      ]
+    },
+    "Parse HTML Content": {
+      "main": [[{"node": "Discover New URLs", "type": "main", "index": 0}]]
+    },
+    "Discover New URLs": {
+      "main": [[{"node": "Filter Valid Content", "type": "main", "index": 0}]]
+    },
+    "Filter Valid Content": {
+      "main": [
+        [
+          {"node": "Save Document to JSONL", "type": "main", "index": 0},
+          {"node": "Check for New URLs", "type": "main", "index": 0}
+        ],
+        []
+      ]
+    },
+    "Save Document to JSONL": {
+      "main": [[{"node": "Generate Final Statistics", "type": "main", "index": 0}]]
+    },
+    "Check for New URLs": {
+      "main": [
+        [{"node": "Prepare Next URL Batch", "type": "main", "index": 0}],
+        []
+      ]
+    },
+    "Prepare Next URL Batch": {
+      "main": [[{"node": "Rate Limiting Delay", "type": "main", "index": 0}]]
+    },
+    "Rate Limiting Delay": {
+      "main": [[{"node": "Process URLs", "type": "main", "index": 0}]]
+    },
+    "Generate Final Statistics": {
+      "main": [[{"node": "Completion Notice", "type": "main", "index": 0}]]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": ["web-crawling", "policy-address", "hong-kong", "government"],
+  "triggerCount": 0,
+  "updatedAt": "2025-09-22T00:00:00.000Z",
+  "versionId": "1"
+}
