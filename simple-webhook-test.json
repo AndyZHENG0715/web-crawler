@@ -1,0 +1,46 @@
+{
+  "name": "Simple Webhook Test",
+  "description": "Minimal webhook test to validate n8n functionality",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "test-webhook",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [40, 300],
+      "webhookId": "test-webhook"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseCode": 200,
+        "responseBody": "{ \"status\": \"success\", \"message\": \"Webhook test successful\", \"timestamp\": \"{{ $now }}\" }"
+      },
+      "id": "webhook-response",
+      "name": "Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [260, 300]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [[{"node": "Webhook Response", "type": "main", "index": 0}]]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": ["webhook-test"],
+  "triggerCount": 0,
+  "updatedAt": "2025-09-22T00:00:00.000Z",
+  "versionId": "1"
+}

@@ -1,0 +1,45 @@
+{
+  "name": "Hong Kong Policy Address Crawler",
+  "description": "Minimal webhook test for Policy Address Crawler",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "policy-address-crawler",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [40, 300],
+      "webhookId": "policy-address-crawler"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "✅ Policy Address Crawler Webhook Working!\n\nTimestamp: {{ $now }}\nSeed URLs: https://www.policyaddress.gov.hk/2024/, https://www.policyaddress.gov.hk/2023/\nMax Pages: 50\nStatus: Ready to crawl Hong Kong Policy Address documents"
+      },
+      "id": "webhook-response",
+      "name": "Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [300, 300]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [[{"node": "Webhook Response", "type": "main", "index": 0}]]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2025-09-22T09:50:00.000Z",
+  "versionId": "1"
+}
